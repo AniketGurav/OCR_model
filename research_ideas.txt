@@ -1,0 +1,6 @@
+Research Questions:
+
+1. How can the model know to read characters from left to right? More specifically, is there a better way to bridge the gap between image features (not sequential) to reading characters (sequential)?
+2. Can we add bias or training heuristics to help distinguish D, 0, and O on license plates?
+3. Since an RNN models language statistics, does it help in classifying random strings found in captchas and license plates?
+4. Can we add the attention algorithm to a CNN before it is passed to the RNN?
