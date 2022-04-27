@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class BaseModel(nn.Module):
     def __init__(self, eow, recursions=1):
@@ -72,9 +73,9 @@ class BaseModel(nn.Module):
 
         I = torch.unsqueeze(x, dim=1)  # -> [1, 1, 1024]
 
-        batched_sow = torch.autograd.Variable(torch.zeros(size=(x.size(0), 1, self.sow_size)))
-        h0 = torch.autograd.Variable(torch.zeros(1, 1, self.eow.size(0)))
-        c0 = torch.autograd.Variable(torch.zeros(1, 1, 256))
+        batched_sow = torch.autograd.Variable(torch.zeros(size=(x.size(0), 1, self.sow_size))).to(device)
+        h0 = torch.autograd.Variable(torch.zeros(1, 1, self.eow.size(0))).to(device)
+        c0 = torch.autograd.Variable(torch.zeros(1, 1, 256)).to(device)
         results = []
 
         s, (hn_1, cn_1) = self.rnn_1(batched_sow, (h0, c0))  # -> [1, 1, 101]
