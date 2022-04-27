@@ -6,7 +6,8 @@ class BaseModel(nn.Module):
     def __init__(self, eow, recursions=1):
         super().__init__()
         
-        self.eow = eow
+        self.sow_size = eow.size(0)  # SOW = 0, 0, ..., 0, 0
+        self.eow = eow  # EOW = 0, 0, ..., 0, 1
         self.recursions = recursions
         
         self.conv1_0 = nn.Conv2d(1, 64, (3, 3), padding="same")
@@ -31,13 +32,13 @@ class BaseModel(nn.Module):
         self.dense1 = nn.Linear(24576, 1024)
         self.dense2 = nn.Linear(1024, 1024) # -> [1, 1024]
 
-        self.rnn_1 = nn.LSTM(input_size=1024, hidden_size=256,
+        self.rnn_1 = nn.LSTM(input_size=self.sow_size, hidden_size=256,
                              num_layers=1, batch_first=True,
                              proj_size=self.eow.size(0)) #lstm
 
-        # self.attention = 
+        self.attention = EnergyAttention(1024, self.eow.size(0))
 
-        self.rnn_2 = nn.LSTM(input_size=101, hidden_size=256,
+        self.rnn_2 = nn.LSTM(input_size=1024, hidden_size=256,
                              num_layers=1, batch_first=True,
                              proj_size=self.eow.size(0))
     
@@ -47,35 +48,64 @@ class BaseModel(nn.Module):
             x = self.conv1_t(x)
         
         x = self.pool1(x)
-        
-        
+
         x = self.conv2_0(x)
         for _ in range(self.recursions):
             x = self.conv2_t(x)
-        
+
         x = self.pool2(x)
-        
+
         x = self.conv3_0(x)
         for _ in range(self.recursions):
             x = self.conv3_t(x)
-        
+
         x = self.pool3(x)
-        
+
         x = self.conv4_0(x)
         for _ in range(self.recursions):
             x = self.conv4_t(x)
-        
+
         x = self.flatten(x)
-        
+
         x = self.dense1(x)
         x = self.dense2(x)
-        
-        x = torch.unsqueeze(x, dim=1)
 
+        I = torch.unsqueeze(x, dim=1)  # -> [1, 1, 1024]
+
+        batched_sow = torch.autograd.Variable(torch.zeros(size=(x.size(0), 1, self.sow_size)))
         h0 = torch.autograd.Variable(torch.zeros(1, 1, self.eow.size(0)))
         c0 = torch.autograd.Variable(torch.zeros(1, 1, 256))
-        x, (hn, cn) = self.rnn_1(x, (h0, c0))
+        results = []
+
+        s, (hn_1, cn_1) = self.rnn_1(batched_sow, (h0, c0))  # -> [1, 1, 101]
+        c_t = self.attention(I, s)
+        x, (hn_2, cn_2) = self.rnn_2(c_t, (h0, c0))
+        results.append(x)
+        for _ in range(10):
+            s, (hn_1, cn_1) = self.rnn_1(x, (hn_1, cn_1))
+            c_t = self.attention(I, s)
+            x, (hn_2, cn_2) = self.rnn_2(c_t, (hn_2, cn_2))
+            results.append(x)
+
+        results = torch.cat(results, dim=1)  # -> [1, 11, 101]
+
+        return results
+
+
+class EnergyAttention(nn.Module):
+    def __init__(self, I_shape, s_shape):
+        super().__init__()
+
+        self.s_shape = s_shape
+        self.out_shape = I_shape
         
-        x, (hn, cn) = self.rnn_2(x, (h0, c0))
+        self.s_layer = nn.Linear(self.s_shape, self.out_shape)
+        self.tanh = nn.Tanh()
+        self.softmax = nn.Softmax(dim=2)
         
-        return x
+    def forward(self, I, s):
+        s_proj = self.s_layer(s)
+        result = self.tanh(I + s_proj)  # -> [1, 1, 1024]
+        
+        alpha = self.softmax(result)  # -> [1, 1, 1024]
+        return alpha * I
