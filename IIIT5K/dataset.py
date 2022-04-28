@@ -38,7 +38,7 @@ class IIIT5KDataset(Dataset):
             lbl = list(lbl)
             lbl = [string.printable.index(c) for c in lbl]
             lbl += [len(string.printable) for i in range(max_label_size - len(lbl) + 1)]  # eow
-            lbl = [np.eye(len(string.printable) + 1)[l] for l in lbl]
+            # lbl = [np.eye(len(string.printable) + 1)[l] for l in lbl]
             
             lbls[i] = lbl
 

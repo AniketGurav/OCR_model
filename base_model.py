@@ -30,22 +30,18 @@ class BaseModel(nn.Module):
         self.conv4_t = nn.Conv2d(512, 512, (3, 3), padding="same")
 
         self.flatten = nn.Flatten()
-        self.dense1 = nn.Linear(24576, 2048)
-        self.dense2 = nn.Linear(2048, 1024) # -> [1, 1024]
-        
-        self.out = nn.Linear(1024, 101)
+        self.dense1 = nn.Linear(24576, 4096)
+        self.dense2 = nn.Linear(4096, 4096)
 
         self.rnn_1 = nn.LSTM(input_size=self.sow_size, hidden_size=1024,
                              num_layers=1, batch_first=True,
-                             proj_size=self.eow.size(0)) #lstm
+                             proj_size=self.eow.size(0))
 
-        self.attention = EnergyAttention(1024, self.eow.size(0))
+        self.attention = EnergyAttention(4096, self.eow.size(0))
 
-        self.rnn_2 = nn.LSTM(input_size=1024, hidden_size=1024,
+        self.rnn_2 = nn.LSTM(input_size=4096, hidden_size=1024,
                              num_layers=1, batch_first=True,
                              proj_size=self.eow.size(0))
-        
-        self.softmax = nn.Softmax(dim=2)
     
     def forward(self, x):
         x = self.conv1_0(x)
@@ -81,19 +77,17 @@ class BaseModel(nn.Module):
         batched_sow = torch.autograd.Variable(torch.zeros(size=(x.size(0), 1, self.sow_size))).to(device)
         h0 = torch.autograd.Variable(torch.zeros(1, batch_size, self.eow.size(0))).to(device)
         c0 = torch.autograd.Variable(torch.zeros(1, batch_size, 1024)).to(device)
-        results = torch.autograd.Variable(torch.zeros(batch_size, 23, self.sow_size)).to(device)
+        results = torch.autograd.Variable(torch.zeros(batch_size, self.sow_size, 23)).to(device)
 
         s, (hn_1, cn_1) = self.rnn_1(batched_sow, (h0, c0))
         c_t = self.attention(I, s)
         x, (hn_2, cn_2) = self.rnn_2(c_t, (h0, c0))
-        results[:, 0, :] = torch.squeeze(x, dim=1)
+        results[:, :, 0] = torch.squeeze(x, dim=1)
         for idx in range(1, 23):
             s, (hn_1, cn_1) = self.rnn_1(x, (hn_1, cn_1))
             c_t = self.attention(I, s)
             x, (hn_2, cn_2) = self.rnn_2(c_t, (hn_2, cn_2))
-            results[:, idx, :] = torch.squeeze(x, dim=1)
-
-        results = self.softmax(results)
+            results[:, :, idx] = torch.squeeze(x, dim=1)
 
         return results
 
